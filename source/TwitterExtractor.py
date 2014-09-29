@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 import logging
 #imports
+import httplib
+import socket
 from tweepy import API
 #from tweepy import Stream
 from tweepy import OAuthHandler
@@ -35,8 +37,14 @@ fieldNames = ["API Key","API Secret",
               "Search String", "Max. Tweets"]
 
 fieldValues = []  # we start with blanks for the values
-for i in range(6):
+for i in range(4):
     fieldValues.append(i)
+
+try:
+        extra_entropy = 'cl;ad13 \0al;323kjd #(adl;k$#ajsd'.encode('ascii')
+except AttributeError:
+        extra_entropy = 'cl;ad13 \0al;323kjd #(adl;k$#ajsd'
+
 
 for i in range(len(sys.argv)):
     if str(sys.argv[i]).lower() == "-mode" and (i + 1) < len(sys.argv):
@@ -68,18 +76,19 @@ def setArgs(fieldValues):
 
 def parseArgs(fieldValues):
 
-
     #if paramslist is None: break
 
     for i in range(len(paramslist)):
         if paramslist[i].split('=')[0].lower() == 'api_key':
             try:
-                fieldValues[0] = dpapi.dpapi_decrypt_data(paramslist[i].split('=')[1].decode('hex'))
+                fieldValues[0] = dpapi.dpapi_decrypt_data(paramslist[i].split('=')[1].decode('hex'),
+                                                          entropy = extra_entropy)
             except:
                 fieldValues[0] = 'ENTER_API_KEY'
         elif paramslist[i].split('=')[0].lower() == 'api_secret':
             try:
-                fieldValues[1] = dpapi.dpapi_decrypt_data(paramslist[i].split('=')[1].decode('hex'))
+                fieldValues[1] = dpapi.dpapi_decrypt_data(paramslist[i].split('=')[1].decode('hex'),
+                                                          entropy = extra_entropy)
             except:
                 fieldValues[1] = 'ENTER_API_SECRET'
         #elif paramslist[i].split('=')[0].lower() == 'access_token':
@@ -91,7 +100,6 @@ def parseArgs(fieldValues):
         elif paramslist[i].split('=')[0].lower() == 'items':
             fieldValues[3] = paramslist[i].split('=')[1]
         i += 1
-
     return fieldValues
 
 
@@ -135,7 +143,26 @@ def printData(fieldValues):
         auth = OAuthHandler(api_key, api_secret)
         #auth.set_access_token(access_token, access_secret)
 
-        api = API(auth)
+        proxy_url = ""
+        #test connectivity and set proxy
+        test_con_url = "www.google.com" # For connection testing
+        test_con_resouce = "/" # may change in future
+        test_con = httplib.HTTPConnection(test_con_url) # create a connection
+
+        try:
+            test_con.request("GET", test_con_resouce) # do a GET request
+            response = test_con.getresponse()
+        except httplib.ResponseNotReady as e:
+            easygui.msgbox("Improper connection state")
+        except socket.gaierror as e:
+            proxy_url = "proxy:8080"
+        else:
+            proxy_url = ""
+
+        test_con.close()
+
+
+        api = API(auth_handler = auth, proxy_url = proxy_url)
 
         print "beginDSInfo"
         print """fileName;#;true
@@ -144,8 +171,8 @@ def printData(fieldValues):
     csv_number_grouping;,;true
     csv_number_decimal;.;true
     csv_date_format;d.M.yyyy;true"""
-        print ''.join(['api_key;', dpapi.dpapi_encrypt_data(fieldValues[0]).encode('hex'), ';true'])
-        print ''.join(['api_secret;', dpapi.dpapi_encrypt_data(fieldValues[1]).encode('hex'), ';true'])
+        print ''.join(['api_key;', dpapi.dpapi_encrypt_data(fieldValues[0], entropy = extra_entropy).encode('hex'), ';true'])
+        print ''.join(['api_secret;', dpapi.dpapi_encrypt_data(fieldValues[1], entropy = extra_entropy).encode('hex'), ';true'])
         #print ''.join(['access_token;', fieldValues[2], ';true'])
         #print ''.join(['access_secret;', fieldValues[3], ';true'])
         print ''.join(['query;', fieldValues[2], ';true'])
@@ -156,7 +183,7 @@ def printData(fieldValues):
         try:
             for tweet in Cursor(api.search,
                                        q=query,
-                                       count=100,
+                                       count=100, #that's results per page
                                        result_type="recent",
                                        include_entities=True,
                                        lang="en").items(int(items)):
